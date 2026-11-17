@@ -1,0 +1,57 @@
+name: Build SuperIncert APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Unzip project
+        run: |
+          ZIP=$(find . -maxdepth 2 -iname "*.zip" -not -path "./.git/*" | head -n 1)
+          if [ -z "$ZIP" ]; then echo "No zip file found in the repo"; exit 1; fi
+          echo "Using $ZIP"
+          mkdir -p _src
+          unzip -q "$ZIP" -d _src
+          SETTINGS=$(find _src -name "settings.gradle.kts" -not -path "*/__MACOSX/*" | head -n 1)
+          if [ -z "$SETTINGS" ]; then echo "Project not found inside zip"; exit 1; fi
+          echo "PROJECT_DIR=$(dirname "$SETTINGS")" >> $GITHUB_ENV
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.9
+
+      - name: Build debug APK
+        run: gradle -p "$PROJECT_DIR" assembleDebug --stacktrace
+
+      - name: Rename APK
+        run: cp "$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk" SuperIncert.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SuperIncert-APK
+          path: SuperIncert.apk
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: SuperIncert v1.0.${{ github.run_number }}
+          files: SuperIncert.apk
